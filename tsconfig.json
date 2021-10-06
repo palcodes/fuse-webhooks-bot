@@ -1,13 +1,12 @@
 {
-    "compilerOptions": {
-      "target": "es5",
-      "lib": [
-        "esnext"
-      ],
-      "rootDir": "./",
-      "outDir": "./build",
-      "esModuleInterop": true,
-      "strict": false,
-      "allowJs": true
-    }
+  "compilerOptions": {
+    "target": "es5",
+    "lib": ["esnext"],
+    "rootDir": "./",
+    "outDir": "./build",
+    "esModuleInterop": true,
+    "strict": false,
+    "allowJs": true,
+    "resolveJsonModule": true
+  }
 }

@@ -1,23 +1,25 @@
-require("dotenv").config();
-
+import "dotenv/config";
+import * as Sentry from "@sentry/node";
 import { MessageBuilder, Webhook } from "discord-webhook-node";
 
-import Fuse from "./fuse.node.commonjs2.js";
-const fuse = new Fuse(
-  "wss://eth-mainnet.ws.alchemyapi.io/v2/hyzY6NPaP88J5E8UJKYoiUi2i_a4O7l4"
-);
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+});
+
+import { fusePoolLens, web3 } from "./fuse";
+import CErc20Delegate from "./abis/CErc20Delegate.json";
 
 console.log("Connecting to Discord Webhook:", process.env.WEBHOOK_URL);
 
 const hook = new Webhook(process.env.WEBHOOK_URL);
 hook.setUsername("Fuse Alerts");
 hook.setAvatar(
-  "https://raw.githubusercontent.com/Rari-Capital/fuse-webhooks-bot/main/fuse.png"
+  "https://raw.githubusercontent.com/marketxyz/fuse-webhooks-bot/main/fuse.png"
 );
 
 const smallFormatter = Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
-  maximumFractionDigits: 2
+  maximumFractionDigits: 2,
 });
 
 function formatAmount(amount: any, decimals: any) {
@@ -53,34 +55,30 @@ export interface FuseAsset {
 }
 
 async function main() {
-  const { 1: fusePools } = await fuse.contracts.FusePoolLens.methods
+  const { 1: fusePools } = await fusePoolLens.methods
     .getPublicPoolsWithData()
     .call({ gas: 1e18 });
 
   for (let i = 0; i < fusePools.length; i++) {
-    if (i == 4) {
-      // Pool 4 is broken, we'll just skip it for now.
-      continue;
-    }
-
-    fuse.contracts.FusePoolLens.methods
+    fusePoolLens.methods
       .getPoolAssetsWithData(fusePools[i].comptroller)
       .call({
         from: "0x0000000000000000000000000000000000000000",
-        gas: 1e18
+        gas: 1e18,
       })
       .then((assets: FuseAsset[]) => {
-        assets.forEach(asset => {
-          const cToken = new fuse.web3.eth.Contract(
-            JSON.parse(
-              fuse.compoundContracts[
-                "contracts/CEtherDelegate.sol:CEtherDelegate"
-              ].abi
-            ),
+        assets.forEach((asset) => {
+          const cToken = new web3.eth.Contract(
+            CErc20Delegate.abi as any,
             asset.cToken
           );
 
-          cToken.events.allEvents({}, function (_, event) {
+          cToken.events.allEvents({}, function (e, event) {
+            if (e) {
+              console.log("err: ", e);
+              Sentry.captureException(e);
+              return;
+            }
             console.log("New Event", event.transactionHash);
 
             const eventName = event.event;
@@ -166,13 +164,14 @@ async function main() {
               hook.send(
                 embed.addField(
                   "\u200B",
-                  "https://etherscan.io/tx/" + event.transactionHash
+                  "https://polygonscan.com/tx/" + event.transactionHash
                 )
               );
             }
           });
         });
-      });
+      })
+      .catch((e) => Sentry.captureException(e));
   }
 }
 
